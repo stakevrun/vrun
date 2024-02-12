@@ -190,9 +190,19 @@ const invert = z => {
   return t < 0n ? t + order : t
 }
 
-const affineX = ({x, z}) => mulm(x, invert(z))
+const toAffine = ({x, y, z}) => {
+  const zi = invert(z)
+  return {x: mulm(x, zi), y: mulm(y, zi)}
+}
 
-const pubkeyFromPrivkey = (sk) => affineX(mulp(sk, g1))
+// Three flag bits are added to the raw x coordinate, as described here
+// https://github.com/zcash/librustzcash/blob/6e0364cd42a2b3d2b958a54771ef51a8db79dd29/pairing/src/bls12_381/README.md#serialization
+const pubkeyFromPrivkey = (sk) => {
+  const {x, y} = toAffine(mulp(sk, g1))
+  const bytes = I2OSP(x, 48)
+  bytes[0] |= ((y * 2n) / order) ? 0b10100000 : 0b10000000
+  return bytes
+}
 
 // addresses are checksummed (ERC-55) hexstrings with the 0x prefix
 // pubkeys are lowercase hexstrings with the 0x prefix
@@ -277,7 +287,7 @@ if (process.env.COMMAND == 'test') {
   ])
   const expectedPubkey = '0x8a0f14c0efe188fbace5b4a72f9e24ce6484b83d2a266837f69f748dafccfdcb12167f5427b7801367a32bf63fdf4783'
   const pubkey = pubkeyFromPrivkey(privkey)
-  const hexPubkey = ethers.toBeHex(pubkey)
+  const hexPubkey = ethers.hexlify(pubkey)
   if (hexPubkey == expectedPubkey)
     console.log(`Test pubkey passed`)
   else {
@@ -304,7 +314,7 @@ else if (process.env.COMMAND == 'deposit') {
   const prefixKey = getPrefixKey(seed)
   const {signing} = getValidatorKeys({prefixKey}, 0)
   const pubkey = pubkeyFromPrivkey(signing)
-  console.log(`Got pubkey ${ethers.toBeHex(pubkey)} from signing key ${signing} at index 0`)
+  console.log(`Got pubkey ${ethers.hexlify(pubkey)} from signing key ${signing} at index 0`)
   console.error(`Not implemented yet: ${process.env.COMMAND}`)
   process.exit(1)
 }
