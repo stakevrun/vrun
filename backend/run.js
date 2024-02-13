@@ -3,7 +3,12 @@ import { createHash, hkdfSync, randomBytes } from 'node:crypto'
 import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
 import { ethers } from 'ethers'
 
-const chainId = parseInt(process.env.CHAIN) || 1
+const chainIds = {1: 'mainnet', 17000: 'holesky'}
+const chainId = process.env.CHAIN ?
+  Object.entries(chainIds).find(([k, v]) => [k, v].some(x => x == process.env.CHAIN))?.[0] :
+  1
+const chain = chainIds[chainId]
+console.log(`On chain ${chain}`)
 
 // ERC-2333
 
@@ -231,7 +236,7 @@ const pubkeyFromPrivkey = (sk) => {
 const commands = ["init", "deposit", "setFeeRecipient", "setGraffiti", "setEnabled", "exit", "test"]
 
 if (!commands.includes(process.env.COMMAND)) {
-  console.error(`Unrecognised command ${process.env.COMMAND}: should be one of ${commands}.`)
+  console.error(`Unrecognised command ${process.env.COMMAND}. Wanted: ${commands.join(' | ')}`)
   process.exit(1)
 }
 
