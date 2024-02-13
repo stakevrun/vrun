@@ -1,6 +1,6 @@
 import 'dotenv/config'
 import { createHash, hkdfSync, randomBytes } from 'node:crypto'
-import { mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 import { ethers } from 'ethers'
 
 const chainIds = {1: 'mainnet', 17000: 'holesky'}
@@ -221,9 +221,9 @@ const pubkeyFromPrivkey = (sk) => {
 //
 // the log is an append-only record of user actions
 // log entries have this format:
-// { type: "setFeeRecipient" | "setGraffiti" | "setEnabled" | "exit"
+// { type: "setFeeRecipient" | "setGraffiti" | "setEnabled" | "deposit" | "exit"
 // , time: timestamp
-// , data: address | string | bool | undefined
+// , data: address | string | bool | number | undefined
 // }
 //
 // environment variables
@@ -232,6 +232,7 @@ const pubkeyFromPrivkey = (sk) => {
 // ADDRESS
 // PUBKEY
 // DATA
+// INDEX
 
 const commands = ["init", "deposit", "setFeeRecipient", "setGraffiti", "setEnabled", "exit", "test"]
 
@@ -304,11 +305,12 @@ if (process.env.COMMAND == 'test') {
 
 const address = ethers.getAddress(process.env.ADDRESS)
 
+const getTimestamp = () => Math.floor(Date.now() / 1000)
+
 if (process.env.COMMAND == 'init') {
   const dirPath = `db/${chainId}/${address}`
   mkdirSync(dirPath, {recursive: true})
-  const timestamp = Math.floor(Date.now() / 1000)
-  writeFileSync(`${dirPath}/init`, timestamp.toString(), {flag: 'wx'})
+  writeFileSync(`${dirPath}/init`, getTimestamp().toString(), {flag: 'wx'})
   writeFileSync(`${dirPath}/seed`, randomBytes(32), {flag: 'wx'})
   process.exit()
 }
@@ -317,10 +319,20 @@ else if (process.env.COMMAND == 'deposit') {
   const dirPath = `db/${chainId}/${address}`
   const seed = new Uint8Array(readFileSync(`${dirPath}/seed`))
   const prefixKey = getPrefixKey(seed)
-  const {signing} = getValidatorKeys({prefixKey}, 0)
-  const pubkey = pubkeyFromPrivkey(signing)
-  console.log(`Got pubkey ${ethers.hexlify(pubkey)} from signing key ${signing} at index 0`)
-  console.error(`Not implemented yet: ${process.env.COMMAND}`)
+  const startIndex = parseInt(process.env.INDEX) || 0
+  let index = startIndex, sk, pubkey, keyPath
+  while (true) {
+    ({signing: sk} = getValidatorKeys({prefixKey}, index))
+    pubkey = ethers.hexlify(pubkeyFromPrivkey(sk))
+    keyPath = `${dirPath}/${pubkey}`
+    if (existsSync(`${keyPath}/log`)) index++
+    else break
+  }
+  const log = {type: "deposit", time: getTimestamp(), data: index}
+  mkdirSync(keyPath, {recursive: true})
+  writeFileSync(`${keyPath}/log`, `${JSON.stringify(log)}\n`, {flag: 'wx'})
+  console.log(`Added pubkey ${pubkey} at index ${index} for ${address} on ${chain}`)
+  console.error(`Not implemented yet: Create keystore, load into keymanager`)
   process.exit(1)
 }
 
