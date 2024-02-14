@@ -39,7 +39,7 @@ const L2 = Uint8Array.from([0, L])
 function secretKeyFromSeed(seed) {
   const seed0 = new Uint8Array(seed.length + 1)
   seed0.set(seed)
-  let salt = "BLS-SIG-KEYGEN-SALT-"
+  let salt = 'BLS-SIG-KEYGEN-SALT-'
   let SK = 0n
   while (SK == 0n) {
     salt = sha256(salt)
@@ -221,7 +221,7 @@ const pubkeyFromPrivkey = (sk) => {
 //
 // the log is an append-only record of user actions
 // log entries have this format:
-// { type: "setFeeRecipient" | "setGraffiti" | "setEnabled" | "deposit" | "exit"
+// { type: "setFeeRecipient" | "setGraffiti" | "setEnabled" | "keygen" | "exit"
 // , time: timestamp
 // , data: address | string | bool | number | undefined
 // }
@@ -234,11 +234,10 @@ const pubkeyFromPrivkey = (sk) => {
 // DATA
 // INDEX
 
-const commands = ["init", "deposit", "setFeeRecipient", "setGraffiti", "setEnabled", "exit", "test"]
+const commands = ['init', 'keygen', 'setFeeRecipient', 'setGraffiti', 'setEnabled', 'keystore', 'exit', 'test']
 
 if (!commands.includes(process.env.COMMAND)) {
-  console.error(`Unrecognised command ${process.env.COMMAND}. Wanted: ${commands.join(' | ')}`)
-  process.exit(1)
+  throw new Error(`Unrecognised command ${process.env.COMMAND}. Wanted: ${commands.join(' | ')}`)
 }
 
 if (process.env.COMMAND == 'test') {
@@ -276,13 +275,11 @@ if (process.env.COMMAND == 'test') {
       if (csk == child_SK)
         console.log(`Test case ${i} passed`)
       else {
-        console.error(`Test case ${i} failed: Got ${csk} instead of ${child_SK}`)
-        process.exit(1)
+        throw new Error(`Test case ${i} failed: Got ${csk} instead of ${child_SK}`)
       }
     }
     else {
-      console.error(`Test case ${i} failed: Got ${sk} instead of ${master_SK}`)
-      process.exit(1)
+      throw new Error(`Test case ${i} failed: Got ${sk} instead of ${master_SK}`)
     }
   }
   const privkey = OS2IP([
@@ -297,8 +294,7 @@ if (process.env.COMMAND == 'test') {
   if (hexPubkey == expectedPubkey)
     console.log(`Test pubkey passed`)
   else {
-    console.error(`Test pubkey failed: Got ${pubkey} i.e. ${hexPubkey} instead of ${expectedPubkey}`)
-    process.exit(1)
+    throw new Error(`Test pubkey failed: Got ${pubkey} i.e. ${hexPubkey} instead of ${expectedPubkey}`)
   }
   process.exit()
 }
@@ -315,7 +311,7 @@ if (process.env.COMMAND == 'init') {
   process.exit()
 }
 
-else if (process.env.COMMAND == 'deposit') {
+else if (process.env.COMMAND == 'keygen') {
   const dirPath = `db/${chainId}/${address}`
   const seed = new Uint8Array(readFileSync(`${dirPath}/seed`))
   const prefixKey = getPrefixKey(seed)
@@ -328,7 +324,7 @@ else if (process.env.COMMAND == 'deposit') {
     if (existsSync(`${keyPath}/log`)) index++
     else break
   }
-  const log = {type: "deposit", time: getTimestamp(), data: index}
+  const log = {type: 'keygen', time: getTimestamp(), data: index}
   mkdirSync(keyPath, {recursive: true})
   writeFileSync(`${keyPath}/log`, `${JSON.stringify(log)}\n`, {flag: 'wx'})
   console.log(`Added pubkey ${pubkey} at index ${index} for ${address} on ${chain}`)
