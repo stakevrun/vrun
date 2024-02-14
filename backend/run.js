@@ -1,6 +1,8 @@
 import 'dotenv/config'
-import { createHash, hkdfSync, randomBytes } from 'node:crypto'
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
+import { createHash, createCipheriv, hkdfSync, scryptSync, randomUUID, randomBytes } from 'node:crypto'
+import { mkdirSync, existsSync, writeFileSync, readFileSync, createReadStream } from 'node:fs'
+import { createInterface } from 'node:readline'
+import { once } from 'node:events'
 import { ethers } from 'ethers'
 
 const chainIds = {1: 'mainnet', 17000: 'holesky'}
@@ -219,6 +221,63 @@ const pubkeyFromPrivkey = (sk) => {
   return bytes
 }
 
+// ERC-2335
+
+const nonPasswordCodePoint = n =>
+  n <= 0x1f || 0x80 <= n && n <= 0x9f || n == 0x7f ||
+  0x2fe0 <= n && n <= 0x2fef || 0xd7ff < n
+
+const generatePassword = () => {
+  const codePoints = new Uint16Array(randomBytes(32).buffer).filter(n => !nonPasswordCodePoint(n))
+  const chars = Array.from(codePoints).map(n => String.fromCodePoint(n))
+  return chars.join('')
+}
+
+const toHex = a => ethers.hexlify(a).slice(2)
+
+const generateKeystore = ({sk, path, pubkey, password}) => {
+  pubkey ??= pubkeyFromPrivkey(sk)
+  if (typeof pubkey != 'string') pubkey = toHex(pubkey)
+
+  password ??= generatePassword()
+  const saltBytes = randomBytes(32)
+  const salt = toHex(saltBytes)
+
+  const dklen = 128 / 8
+  const r = 8
+  const p = 1
+  const n = 16384
+  const derivedKey = scryptSync(password, saltBytes, dklen, {r, p, N: n})
+  const algorithm = 'aes-128-ctr'
+  const ivBytes = randomBytes(16)
+  const iv = toHex(ivBytes)
+
+  const cipher = createCipheriv(algorithm, derivedKey, ivBytes)
+  const data = I2OSP(sk, 32)
+  const enc1 = cipher.update(data, null, 'hex')
+  const enc2 = cipher.final('hex')
+  const cipherMessage = `${enc1}${enc2}`
+
+  const hash = createHash('sha256')
+  hash.update(derivedKey.slice(16))
+  hash.update(cipherMessage, 'hex')
+  const checksumMessage = hash.digest('hex')
+
+  const keystore = {
+    crypto: {
+      kdf: { function: 'scrypt', params: { dklen, n, p, r, salt }, message: '' },
+      checksum: { function: 'sha256', params: {}, message: checksumMessage },
+      cipher: { function: algorithm, params: { iv }, message: cipherMessage },
+    },
+    path,
+    pubkey,
+    uuid: randomUUID(),
+    version: 4
+  }
+
+  return {keystore, password}
+}
+
 // addresses are checksummed (ERC-55) hexstrings with the 0x prefix
 // pubkeys are lowercase hexstrings with the 0x prefix
 // timestamps are integers representing seconds since UNIX epoch
@@ -338,8 +397,44 @@ else if (process.env.COMMAND == 'keygen') {
   mkdirSync(keyPath, {recursive: true})
   writeFileSync(`${keyPath}/log`, `${JSON.stringify(log)}\n`, {flag: 'wx'})
   console.log(`Added pubkey ${pubkey} at index ${index} for ${address} on ${chain}`)
-  console.error(`Not implemented yet: Create keystore, load into keymanager`)
-  process.exit(1)
+  process.exit()
+}
+
+else if (process.env.COMMAND == 'keystore') {
+  const dirPath = `db/${chainId}/${address}`
+  const seed = new Uint8Array(readFileSync(`${dirPath}/seed`))
+
+  const indexFromLog = async (pubkey) => {
+    const logPath = `${dirPath}/${pubkey}/log`
+    const logStream = createReadStream(logPath)
+    const lineReader = createInterface({input: logStream})
+    let index
+    lineReader.once('line', (line) => {
+      const {type, data: index} = JSON.parse(line)
+      if (type != 'keygen')
+        throw new Error(`No keygen in first line of log ${line}`)
+      lineReader.close()
+    })
+    await once(lineReader, 'close')
+    return index
+  }
+
+  const index = parseInt(
+    0 <= process.env.INDEX ?
+    process.env.INDEX :
+    await indexFromLog(process.env.PUBKEY)
+  )
+  const {signing: path} = pathsFromIndex(index)
+  const {signing: sk} = getValidatorKeys({seed}, index)
+  const pubkey = process.env.PUBKEY || pubkeyFromPrivkey(sk)
+
+  if (!existsSync(`${dirPath}/${ethers.hexlify(pubkey)}/log`))
+    throw new Error(`Key at ${index} not generated`)
+
+  const ksp = generateKeystore({sk, pubkey, path})
+
+  console.log(JSON.stringify(ksp))
+  process.exit()
 }
 
 else {
