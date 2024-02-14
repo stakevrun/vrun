@@ -244,7 +244,7 @@ const generateKeystore = ({sk, path, pubkey, password}) => {
   const saltBytes = randomBytes(32)
   const salt = toHex(saltBytes)
 
-  const dklen = 128 / 8
+  const dklen = 32
   const r = 8
   const p = 1
   const n = 16384
@@ -253,14 +253,18 @@ const generateKeystore = ({sk, path, pubkey, password}) => {
   const ivBytes = randomBytes(16)
   const iv = toHex(ivBytes)
 
-  const cipher = createCipheriv(algorithm, derivedKey, ivBytes)
+  const dk = derivedKey.slice(0, 16)
+  const ck = derivedKey.slice(16)
+
+  const cipher = createCipheriv(algorithm, dk, ivBytes)
   const data = I2OSP(sk, 32)
+  cipher.setAutoPadding(false)
   const enc1 = cipher.update(data, null, 'hex')
   const enc2 = cipher.final('hex')
   const cipherMessage = `${enc1}${enc2}`
 
   const hash = createHash('sha256')
-  hash.update(derivedKey.slice(16))
+  hash.update(ck)
   hash.update(cipherMessage, 'hex')
   const checksumMessage = hash.digest('hex')
 
