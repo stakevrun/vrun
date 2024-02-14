@@ -238,6 +238,7 @@ const toHex = a => ethers.hexlify(a).slice(2)
 const generateKeystore = ({sk, path, pubkey, password}) => {
   pubkey ??= pubkeyFromPrivkey(sk)
   if (typeof pubkey != 'string') pubkey = toHex(pubkey)
+  else if (pubkey.startsWith('0x')) pubkey = pubkey.slice(2)
 
   password ??= generatePassword()
   const saltBytes = randomBytes(32)
