@@ -223,24 +223,14 @@ const pubkeyFromPrivkey = (sk) => {
 
 // ERC-2335
 
-const nonPasswordCodePoint = n =>
-  n <= 0x1f || 0x80 <= n && n <= 0x9f || n == 0x7f ||
-  0x2fe0 <= n && n <= 0x2fef || 0xd7ff < n
-
-const generatePassword = () => {
-  const codePoints = new Uint16Array(randomBytes(32).buffer).filter(n => !nonPasswordCodePoint(n))
-  const chars = Array.from(codePoints).map(n => String.fromCodePoint(n))
-  return chars.join('')
-}
-
 const toHex = a => ethers.hexlify(a).slice(2)
+const password = 'Never Gonna Give You Up'
 
-const generateKeystore = ({sk, path, pubkey, password}) => {
+const generateKeystore = ({sk, path, pubkey}) => {
   pubkey ??= pubkeyFromPrivkey(sk)
   if (typeof pubkey != 'string') pubkey = toHex(pubkey)
   else if (pubkey.startsWith('0x')) pubkey = pubkey.slice(2)
 
-  password ??= generatePassword()
   const saltBytes = randomBytes(32)
   const salt = toHex(saltBytes)
 
@@ -280,7 +270,7 @@ const generateKeystore = ({sk, path, pubkey, password}) => {
     version: 4
   }
 
-  return {keystore, password}
+  return keystore
 }
 
 // addresses are checksummed (ERC-55) hexstrings with the 0x prefix
