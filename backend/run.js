@@ -410,13 +410,15 @@ else if (process.env.COMMAND == 'keystore') {
     const lineReader = createInterface({input: logStream})
     let index
     lineReader.once('line', (line) => {
-      const {type, data: index} = JSON.parse(line)
+      const {type, data} = JSON.parse(line)
       if (type != 'keygen')
         throw new Error(`No keygen in first line of log ${line}`)
+      index = data
       lineReader.close()
     })
     await once(lineReader, 'close')
-    return index
+    if (0 <= index) return index
+    else throw new Error(`Failed to get index from ${logPath}`)
   }
 
   const index = parseInt(
