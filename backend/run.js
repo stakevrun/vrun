@@ -71,10 +71,20 @@ const deriveChild = (sk, index) =>
 
 // ERC-2334
 
+const purpose = 12381
+const coinType = 3600
+
 const getPrefixKey = seed => {
   const m = secretKeyFromSeed(seed)
-  const c1 = deriveChild(m, 12381)
-  return deriveChild(c1, 3600)
+  const c1 = deriveChild(m, purpose)
+  return deriveChild(c1, coinType)
+}
+
+const pathsFromIndex = index => {
+  const prefix = `m/${purpose}/${coinType}/${index}`
+  const withdrawal = `${prefix}/0`
+  const signing = `${withdrawal}/0`
+  return {withdrawal, signing}
 }
 
 const getValidatorKeys = ({seed, prefixKey}, index) => {
